@@ -1,6 +1,12 @@
 #MicroXplorer Configuration settings - do not modify
-ADC.ContinuousConvMode=ENABLE
-ADC.IPParameters=ContinuousConvMode,SamplingTime
+ADC.ClockPrescaler=ADC_CLOCK_ASYNC_DIV1
+ADC.ContinuousConvMode=DISABLE
+ADC.DMAContinuousRequests=DISABLE
+ADC.DiscontinuousConvMode=ENABLE
+ADC.EOCSelection=ADC_EOC_SINGLE_CONV
+ADC.IPParameters=ContinuousConvMode,SamplingTime,EOCSelection,Overrun,ClockPrescaler,Resolution,DMAContinuousRequests,DiscontinuousConvMode
+ADC.Overrun=ADC_OVR_DATA_PRESERVED
+ADC.Resolution=ADC_RESOLUTION_12B
 ADC.SamplingTime=ADC_SAMPLETIME_239CYCLES_5
 CAD.formats=
 CAD.pinconfig=
@@ -82,7 +88,7 @@ ProjectManager.ToolChainLocation=
 ProjectManager.UAScriptAfterPath=
 ProjectManager.UAScriptBeforePath=
 ProjectManager.UnderRoot=true
-ProjectManager.functionlistsort=1-SystemClock_Config-RCC-false-HAL-false,2-MX_GPIO_Init-GPIO-false-HAL-true,3-MX_TIM3_Init-TIM3-false-HAL-true,4-MX_TIM14_Init-TIM14-false-HAL-true
+ProjectManager.functionlistsort=1-SystemClock_Config-RCC-false-HAL-false,2-MX_GPIO_Init-GPIO-false-HAL-true,3-MX_TIM3_Init-TIM3-false-HAL-true,4-MX_TIM14_Init-TIM14-false-HAL-true,5-MX_ADC_Init-ADC-false-HAL-true
 RCC.AHBFreq_Value=32000000
 RCC.APB1Freq_Value=32000000
 RCC.APB1TimFreq_Value=32000000
