@@ -1,7 +1,7 @@
 #ifndef SIN_H
 #define SIN_H
 
-#define SAMPLING_10KHZ
+#define SAMPLING_10KHZ_C
 
 #ifdef SAMPLING_2_5KHZ
 #define SAMPLES 26
@@ -22,6 +22,12 @@
 #endif
 
 #ifdef SAMPLING_10KHZ
+#define SAMPLES 101
+#define TIMER_PRESCALER 0
+#define TIMER_PERIOD 3168
+#endif
+
+#ifdef SAMPLING_10KHZ_C
 #define SAMPLES 101
 #define TIMER_PRESCALER 0
 #define TIMER_PERIOD 3168
