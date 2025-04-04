@@ -36,7 +36,10 @@ extern "C" {
 
 /* Exported types ------------------------------------------------------------*/
 /* USER CODE BEGIN ET */
-
+typedef struct {
+	uint32_t voltage;
+	uint32_t count;
+} measurement_t;
 /* USER CODE END ET */
 
 /* Exported constants --------------------------------------------------------*/
