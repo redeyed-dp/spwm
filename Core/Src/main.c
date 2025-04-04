@@ -42,6 +42,7 @@
 
 /* Private variables ---------------------------------------------------------*/
 ADC_HandleTypeDef hadc;
+DMA_HandleTypeDef hdma_adc;
 
 TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim14;
@@ -50,12 +51,16 @@ TIM_HandleTypeDef htim14;
 int started = 0;
 volatile int phase = 0;
 volatile int count = 0;
-int sintable_c[SAMPLES];
+volatile int adc_completed = 0;
+uint32_t lut[SAMPLES];
+uint8_t k = DEFAULT_K;
+uint32_t last_measure = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_DMA_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_TIM14_Init(void);
 static void MX_ADC_Init(void);
@@ -75,12 +80,15 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
     		count = 0;
     	}
     	if (phase == 0) {
-    		TIM3->CCR1 = sintable[count++];
+    		TIM3->CCR1 = lut[count++];
     	}
     	else {
-    		TIM3->CCR2 = sintable[count++];
+    		TIM3->CCR2 = lut[count++];
     	}
     }
+}
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc) {
+	adc_completed = 1;
 }
 
 void start_inverter() {
@@ -99,6 +107,18 @@ void stop_inverter() {
 	HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_2);
 	started = 0;
 }
+
+void check_battery(uint32_t voltage) {
+  if (voltage > UVR && voltage < OVR) {
+    HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
+	start_inverter();
+  }
+  else if (voltage < UVP || voltage > OVP) {
+	stop_inverter();
+	k = DEFAULT_K;
+	HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET);
+  }
+}
 /* USER CODE END 0 */
 
 /**
@@ -108,7 +128,10 @@ void stop_inverter() {
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-
+  uint32_t adc_buf[2];
+  measurement_t feedback = {0, 0};
+  measurement_t battery = {0, 0};
+  calculate_sintable(lut, k);
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -129,11 +152,12 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_TIM3_Init();
   MX_TIM14_Init();
   MX_ADC_Init();
   /* USER CODE BEGIN 2 */
-
+  HAL_ADC_Start_DMA(&hadc, adc_buf, 2);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -143,34 +167,42 @@ int main(void)
 //  HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
 //  HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_2);
 
+
   while (1)
   {
-	  HAL_ADC_Start(&hadc);
-	  HAL_ADC_PollForConversion(&hadc, HAL_MAX_DELAY);
-	  uint32_t voltage = HAL_ADC_GetValue(&hadc);
-	  HAL_ADC_Stop(&hadc);
+    if(adc_completed == 1) {
+      adc_completed = 0;
+	  if(started == 1) {
+        feedback.voltage += adc_buf[0];
+		feedback.count++;
+	  }
+	  if(HAL_GetTick() - last_measure > 1000) {
+		battery.voltage += adc_buf[1];
+		battery.count++;
+		if(battery.count == 0xFF) {
+			uint32_t avg = battery.voltage >> 8;
+			battery.voltage = 0;
+			battery.count = 0;
+			check_battery(avg);
+			last_measure = HAL_GetTick();
+		}
+	  }
+    }
 
-	  if (voltage > UVR && voltage < OVR) {
-		  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET);
-		  start_inverter();
-		  HAL_Delay(1000);
-	  }
-	  else {
-		  if (voltage < UVP) {
-			  stop_inverter();
-			  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET);
-			  HAL_Delay(500);
-			  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
-			  HAL_Delay(500);
-		  }
-		  if (voltage > OVP) {
-			  stop_inverter();
-			  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET);
-			  HAL_Delay(200);
-			  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
-			  HAL_Delay(200);
-		  }
-	  }
+
+	if(feedback.count == 0xFF) {
+      uint32_t avg = feedback.voltage >> 8;
+	  feedback.voltage = 0;
+	  feedback.count = 0;
+	  if(avg > FB_MAX) {
+        k--;
+        calculate_sintable(lut, k);
+      }
+      else if (avg < FB_MIN && k < 0xFF) {
+		k++;
+        calculate_sintable(lut, k);
+      }
+    }
 
     /* USER CODE END WHILE */
 
@@ -244,15 +276,15 @@ static void MX_ADC_Init(void)
   hadc.Init.Resolution = ADC_RESOLUTION_12B;
   hadc.Init.DataAlign = ADC_DATAALIGN_RIGHT;
   hadc.Init.ScanConvMode = ADC_SCAN_DIRECTION_FORWARD;
-  hadc.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
+  hadc.Init.EOCSelection = ADC_EOC_SEQ_CONV;
   hadc.Init.LowPowerAutoWait = DISABLE;
   hadc.Init.LowPowerAutoPowerOff = DISABLE;
-  hadc.Init.ContinuousConvMode = DISABLE;
-  hadc.Init.DiscontinuousConvMode = ENABLE;
+  hadc.Init.ContinuousConvMode = ENABLE;
+  hadc.Init.DiscontinuousConvMode = DISABLE;
   hadc.Init.ExternalTrigConv = ADC_SOFTWARE_START;
   hadc.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
-  hadc.Init.DMAContinuousRequests = DISABLE;
-  hadc.Init.Overrun = ADC_OVR_DATA_PRESERVED;
+  hadc.Init.DMAContinuousRequests = ENABLE;
+  hadc.Init.Overrun = ADC_OVR_DATA_OVERWRITTEN;
   if (HAL_ADC_Init(&hadc) != HAL_OK)
   {
     Error_Handler();
@@ -260,9 +292,17 @@ static void MX_ADC_Init(void)
 
   /** Configure for the selected ADC regular channel to be converted.
   */
-  sConfig.Channel = ADC_CHANNEL_1;
+  sConfig.Channel = ADC_CHANNEL_0;
   sConfig.Rank = ADC_RANK_CHANNEL_NUMBER;
   sConfig.SamplingTime = ADC_SAMPLETIME_239CYCLES_5;
+  if (HAL_ADC_ConfigChannel(&hadc, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure for the selected ADC regular channel to be converted.
+  */
+  sConfig.Channel = ADC_CHANNEL_1;
   if (HAL_ADC_ConfigChannel(&hadc, &sConfig) != HAL_OK)
   {
     Error_Handler();
@@ -352,6 +392,22 @@ static void MX_TIM14_Init(void)
   /* USER CODE BEGIN TIM14_Init 2 */
 
   /* USER CODE END TIM14_Init 2 */
+
+}
+
+/**
+  * Enable DMA controller clock
+  */
+static void MX_DMA_Init(void)
+{
+
+  /* DMA controller clock enable */
+  __HAL_RCC_DMA1_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA1_Channel1_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Channel1_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Channel1_IRQn);
 
 }
 

@@ -1,6 +1,8 @@
 #ifndef SIN_H
 #define SIN_H
 
+#include "stdint.h"
+
 #define SAMPLING_10KHZ_C
 
 #ifdef SAMPLING_2_5KHZ
@@ -33,6 +35,7 @@
 #define TIMER_PERIOD 3168
 #endif
 
-extern const int sintable[SAMPLES];
+extern const uint32_t sintable[SAMPLES];
+extern void calculate_sintable(uint32_t* lut, uint8_t k);
 
 #endif
